@@ -38,7 +38,7 @@ namespace TLM.OpenSource.InvocationFlow.Unity3D
         }
         public static void Initiate()
         {
-            InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script == null;
+            InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script != null;
             singleton = new GameObject("InvocationFlowController", typeof(InvocationFlowController));
         }
 
