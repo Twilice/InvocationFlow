@@ -214,23 +214,41 @@ namespace TLM.OpenSource.InvocationFlow
         // ***** base functions ******
 
         private static Dictionary<TInvokeTarget, List<InvocationHandle>> invocationHandles = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
-
+ private static Dictionary<TInvokeTarget, List<InvocationHandle>> handlesAddedDuringIteration = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
         private static void AddToInvocationFlowDictionary(TInvokeTarget behaviour, InvocationHandle func)
         {
-            if (invocationHandles.ContainsKey(behaviour))
+            if (iterating)
+            {
+                if (handlesAddedDuringIteration.ContainsKey(behaviour))
+                {
+                    handlesAddedDuringIteration[behaviour].Add(func);
+                }
+                else
+                {
+                    handlesAddedDuringIteration.Add(behaviour, new List<InvocationHandle> { func });
+                }
+                func(); // execute this frame in same "timespace" as invocationFlow "parent" that created this while iterating.
+            }
+            else if (invocationHandles.ContainsKey(behaviour))
+            {
                 invocationHandles[behaviour].Add(func);
+            }
             else
+            {
                 invocationHandles.Add(behaviour, new List<InvocationHandle> { func });
+            }
         }
         // it is assumed that deltaTimes are the same inbetween ticks, meaning timeElapsed must always start at 0.
         private static float _deltaTime;
         private static float _unscaledDeltaTime;
+        private static bool iterating = false;
         public static void IterateInvocationHandlers(float deltaTime, float unscaledDeltaTime)
         {
             _deltaTime = deltaTime;
             _unscaledDeltaTime = unscaledDeltaTime;
             List<TInvokeTarget> keysToRemove = new List<TInvokeTarget>();
-
+            
+            iterating = true;
             var keysCache = invocationHandles.Keys;
             foreach (var key in keysCache)
             {
@@ -257,6 +275,23 @@ namespace TLM.OpenSource.InvocationFlow
             {
                 invocationHandles.Remove(keyToRemove);
             }
+            
+            if(handlesAddedDuringIteration.Count != 0)
+            {
+                foreach (var keyValuePair in handlesAddedDuringIteration)
+                {
+                    if (invocationHandles.ContainsKey(keyValuePair.Key))
+                    {
+                        invocationHandles[keyValuePair.Key].AddRange(keyValuePair.Value);
+                    }
+                    else
+                    {
+                        invocationHandles.Add(keyValuePair.Key, keyValuePair.Value);
+                    }
+                }
+                handlesAddedDuringIteration.Clear();
+            }
+            iterating = false;
         }
         private static float Lerp(float x, float y, float samplePoint)
         {
