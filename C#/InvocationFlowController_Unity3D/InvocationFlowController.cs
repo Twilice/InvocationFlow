@@ -1,5 +1,7 @@
-﻿using UnityEditor;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace TLM.OpenSource.InvocationFlow.Unity3D
 {
@@ -19,7 +21,7 @@ namespace TLM.OpenSource.InvocationFlow.Unity3D
             }
 
             DontDestroyOnLoad(gameObject);
-
+#if UNITY_EDITOR
             int highestExecutionOrder = 0;
             MonoScript controllerScript = MonoScript.FromMonoBehaviour(this);
             MonoScript[] allScripts = MonoImporter.GetAllRuntimeMonoScripts();
@@ -35,6 +37,7 @@ namespace TLM.OpenSource.InvocationFlow.Unity3D
                 }
             }
             MonoImporter.SetExecutionOrder(controllerScript, highestExecutionOrder + 100);
+#endif
         }
         public static void Initiate()
         {
