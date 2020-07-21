@@ -2,17 +2,17 @@
 using System.Collections.Generic;
 using InvocationHandle = System.Func<bool>;
 
-namespace TLM.OpenSource.InvocationFlow
+namespace InvocationFlow
 {
-/*
-    To get the invocationFlow to work properly the function
-        * public static void IterateInvocationHandlers(float deltaTime, float unscaledDeltaTime)
-    should be called at every frame and tick update. The invocationFLow is not an event based system, it is more like a superwrapper to write
-    chainable invocations while still have easily readable code without tempering to much with performance.
+    /*
+        To get the invocationFlow to work properly the function
+            * public static void IterateInvocationHandlers(float deltaTime, float unscaledDeltaTime)
+        should be called at every frame and tick update. The invocationFLow is not an event based system, it is more like a superwrapper to write
+        chainable invocations while still have easily readable code without tempering to much with performance.
 
-    This could be for you if you are either looking to implement chain of event kind of logic in an easy and performant way or if you have a bad habit of writing huge update loops
-    with way to many if cases and need to be able to read and structure your code.
-*/
+        This could be for you if you are either looking to implement chain of event kind of logic in an easy and performant way or if you have a bad habit of writing huge update loops
+        with way to many if cases and need to be able to read and structure your code.
+    */
     public static class InvocationFlow<TInvokeTarget> where TInvokeTarget : class
     {
         // this delegate is mainly used for Unity3D logic where a behaviour can be destroyed and become invalid for usage.
@@ -35,7 +35,7 @@ namespace TLM.OpenSource.InvocationFlow
             AddToInvocationFlowDictionary(target, _invokeWhileThen(func, condition, onComplete));
         }
 
-        public static void InvokeDelayed(TInvokeTarget target, float delayTime, Action func, bool scaledTime = false)
+        public static void InvokeDelayed(TInvokeTarget target, float delayTime, Action func, bool scaledTime = true)
         {
             if (scaledTime)
                 AddToInvocationFlowDictionary(target, _invokeDelayedScaled(delayTime, func));
@@ -44,28 +44,28 @@ namespace TLM.OpenSource.InvocationFlow
 
         }
 
-        public static void TimeLerpValue(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = false)
+        public static void TimeLerpValue(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
         {
             if (scaledTime)
                 AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, func));
             else
                 AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, func));
         }
-        public static void TimeLerpValue<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, bool scaledTime = false)
+        public static void TimeLerpValue<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, bool scaledTime = true)
         {
             if (scaledTime)
                 AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, lerpFunction, func));
             else
                 AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, lerpFunction, func));
         }
-        public static void TimeLerpValueThen(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete, bool scaledTime = false)
+        public static void TimeLerpValueThen(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete, bool scaledTime = true)
         {
             if (scaledTime)
                 AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, func, onComplete));
             else
                 AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, func, onComplete));
         }
-        public static void TimeLerpValueThen<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete, bool scaledTime = false)
+        public static void TimeLerpValueThen<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete, bool scaledTime = true)
         {
             if (scaledTime)
                 AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, lerpFunction, func, onComplete));
@@ -128,10 +128,10 @@ namespace TLM.OpenSource.InvocationFlow
 
         private static InvocationHandle _invokeDelayedScaled(float delayTime, Action func)
         {
-            float timeElapsed = -_unscaledDeltaTime;
+            float timeElapsed = -_deltaTime;
             return () =>
             {
-                timeElapsed += _unscaledDeltaTime;
+                timeElapsed += _deltaTime;
                 if (timeElapsed < delayTime)
                 {
                     return false;
@@ -214,7 +214,8 @@ namespace TLM.OpenSource.InvocationFlow
         // ***** base functions ******
 
         private static Dictionary<TInvokeTarget, List<InvocationHandle>> invocationHandles = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
- private static Dictionary<TInvokeTarget, List<InvocationHandle>> handlesAddedDuringIteration = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
+
+        private static Dictionary<TInvokeTarget, List<InvocationHandle>> handlesAddedDuringIteration = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
         private static void AddToInvocationFlowDictionary(TInvokeTarget behaviour, InvocationHandle func)
         {
             if (iterating)
@@ -247,7 +248,7 @@ namespace TLM.OpenSource.InvocationFlow
             _deltaTime = deltaTime;
             _unscaledDeltaTime = unscaledDeltaTime;
             List<TInvokeTarget> keysToRemove = new List<TInvokeTarget>();
-            
+
             iterating = true;
             var keysCache = invocationHandles.Keys;
             foreach (var key in keysCache)
@@ -275,7 +276,7 @@ namespace TLM.OpenSource.InvocationFlow
             {
                 invocationHandles.Remove(keyToRemove);
             }
-            
+
             if(handlesAddedDuringIteration.Count != 0)
             {
                 foreach (var keyValuePair in handlesAddedDuringIteration)

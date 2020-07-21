@@ -3,14 +3,14 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
-namespace TLM.OpenSource.InvocationFlow.Unity3D
+namespace InvocationFlow.Unity3D
 {
     /// <summary>
     /// Will iterate all the delegates used in CustomFunctionInvokes
     /// </summary>
     public class InvocationFlowController : MonoBehaviour
     {
-        private static GameObject singleton = null;
+        public static GameObject singleton = null;
 
         private void Awake()
         {
@@ -36,11 +36,19 @@ namespace TLM.OpenSource.InvocationFlow.Unity3D
                     }
                 }
             }
-            MonoImporter.SetExecutionOrder(controllerScript, highestExecutionOrder + 100);
+            var controllerExecutionOrder = MonoImporter.GetExecutionOrder(controllerScript);
+            if (controllerExecutionOrder != highestExecutionOrder + 100)
+            {
+                MonoImporter.SetExecutionOrder(controllerScript, highestExecutionOrder + 100);
+            }
 #endif
         }
+        private static bool isInitialized = false;
         public static void Initiate()
         {
+            if (isInitialized) return;
+
+            isInitialized = true;
             InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script != null;
             singleton = new GameObject("InvocationFlowController", typeof(InvocationFlowController));
         }
