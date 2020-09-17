@@ -10,6 +10,10 @@ public class ExampleScript : MonoBehaviour
 
         // with lambdas
         this.InvokeWhen(() => print("hello"), () => transform.position.y > 1.0f);
+
+        // Other Invokes exist as well
+        this.InvokeWhile(AboveMagicTreshold, () => print("We are above the treshold!));
+        this.TimeLerpValueThen(2f, 0f, 100f, (value) => print($"Loading {value}%"), () => print("Loading completed in 2 seconds!"));
     }
 
     private void PrintFunc()
