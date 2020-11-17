@@ -49,7 +49,7 @@ namespace InvocationFlow.Unity3D
             if (isInitialized) return;
 
             isInitialized = true;
-            InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script != null;
+            InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script != null; // check valid with Unity's overloaded Null Operator
             singleton = new GameObject("InvocationFlowController", typeof(InvocationFlowController));
         }
 

@@ -16,7 +16,6 @@ namespace InvocationFlow
     public static class InvocationFlow<TInvokeTarget> where TInvokeTarget : class
     {
         // this delegate is mainly used for Unity3D logic where a behaviour can be destroyed and become invalid for usage.
-        // Unity3D is also the reason we use ReferenceEquals instead of normal nullcheck because they have overloaded the null operator...
         public static Func<TInvokeTarget, bool> IsValid = null;
         // ***** invokes "Header" *****
 
@@ -152,8 +151,7 @@ namespace InvocationFlow
                     return false;
                 }
                 func(endVal);
-                if (ReferenceEquals(onComplete, null) == false)
-                    onComplete();
+                onComplete?.Invoke();
                 return true;
             };
         }
@@ -169,8 +167,7 @@ namespace InvocationFlow
                     return false;
                 }
                 func(endVal);
-                if (ReferenceEquals(onComplete, null) == false)
-                    onComplete();
+                onComplete?.Invoke();
                 return true;
             };
         }
@@ -187,8 +184,7 @@ namespace InvocationFlow
                     return false;
                 }
                 func(endVal);
-                if (ReferenceEquals(onComplete, null) == false)
-                    onComplete();
+                onComplete?.Invoke();
                 return true;
             };
         }
@@ -205,8 +201,7 @@ namespace InvocationFlow
                     return false;
                 }
                 func(endVal);
-                if (ReferenceEquals(onComplete, null) == false)
-                    onComplete();
+                onComplete?.Invoke();
                 return true;
             };
         }
@@ -277,7 +272,7 @@ namespace InvocationFlow
                 invocationHandles.Remove(keyToRemove);
             }
 
-            if(handlesAddedDuringIteration.Count != 0)
+            if (handlesAddedDuringIteration.Count != 0)
             {
                 foreach (var keyValuePair in handlesAddedDuringIteration)
                 {
