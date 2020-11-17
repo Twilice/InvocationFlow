@@ -16,8 +16,9 @@ namespace InvocationFlow
     public static class InvocationFlow<TInvokeTarget> where TInvokeTarget : class
     {
         // this delegate is mainly used for Unity3D logic where a behaviour can be destroyed and become invalid for usage.
-        public static Func<TInvokeTarget, bool> IsValid = null;
-        // ***** invokes "Header" *****
+        public static Func<TInvokeTarget, bool> IsValid = (t) => true;
+        public static Func<TInvokeTarget, bool> IsEnabled = (t) => true;
+
 
         public static void InvokeWhen(TInvokeTarget target, Action func, Func<bool> condition)
         {
@@ -254,6 +255,9 @@ namespace InvocationFlow
                     keysToRemove.Add(key);
                     continue;
                 }
+                // if target is paused, skip
+                if (IsEnabled(key) == false)
+                    continue;
                 var invocationFlowsCache = invocationHandles[key];
                 for (int i = invocationFlowsCache.Count - 1; 0 <= i; i--)
                 {
