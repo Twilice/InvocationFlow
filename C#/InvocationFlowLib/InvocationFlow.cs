@@ -216,6 +216,10 @@ namespace InvocationFlow
         {
             if (iterating)
             {
+                bool complete = func(); // execute this frame in same "timespace" as invocationFlow "parent" that created this while iterating.
+                if (complete)
+                    return;
+                
                 if (handlesAddedDuringIteration.ContainsKey(behaviour))
                 {
                     handlesAddedDuringIteration[behaviour].Add(func);
@@ -224,7 +228,6 @@ namespace InvocationFlow
                 {
                     handlesAddedDuringIteration.Add(behaviour, new List<InvocationHandle> { func });
                 }
-                func(); // execute this frame in same "timespace" as invocationFlow "parent" that created this while iterating.
             }
             else if (invocationHandles.ContainsKey(behaviour))
             {
