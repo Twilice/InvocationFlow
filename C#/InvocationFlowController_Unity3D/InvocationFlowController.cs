@@ -1,9 +1,9 @@
-using UnityEngine;
+﻿using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
-namespace InvocationFlow.Unity3D
+namespace TLM.InvocationFlow.Unity3D
 {
     /// <summary>
     /// Will iterate all the delegates used in CustomFunctionInvokes
@@ -51,6 +51,7 @@ namespace InvocationFlow.Unity3D
             isInitialized = true;
             InvocationFlow<MonoBehaviour>.IsValid = (MonoBehaviour script) => script != null; // check valid with Unity's overloaded Null Operator
             InvocationFlow<MonoBehaviour>.IsEnabled = (MonoBehaviour script) => script.isActiveAndEnabled; // check if behaviour is running update
+            InvocationFlow<MonoBehaviour>.LinkDeltaTimeProperties(typeof(Time).GetProperty(nameof(Time.deltaTime)), typeof(Time).GetProperty(nameof(Time.unscaledDeltaTime)));
 
             singleton = new GameObject("InvocationFlowController", typeof(InvocationFlowController));
         }
@@ -58,7 +59,7 @@ namespace InvocationFlow.Unity3D
         // Execution order is expected to be after update but before coroutines as long as execution order is not changed.
         void Update()
         {
-            InvocationFlow<MonoBehaviour>.IterateInvocationHandlers(Time.deltaTime, Time.unscaledDeltaTime);
+            InvocationFlow<MonoBehaviour>.IterateInvocationHandlers();
         }
     }
 }

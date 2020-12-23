@@ -1,4 +1,4 @@
-﻿namespace TLM.OpenSource.InvocationFlow.Example
+﻿namespace TLM.InvocationFlow.Example
 {
     class TestApp
     {
@@ -11,9 +11,6 @@
 
             int testInt = 0;
 
-            System.Console.WriteLine("ColdLoad Frame 0");
-            controller.Tick();
-
             b1.InvokeWhen(() => System.Console.WriteLine("invoked b1"), () => testInt == 1);
             b1.TimeLerpValue(0.2f, 0, 1, (x) =>
             {
@@ -24,7 +21,9 @@
             
             System.Console.WriteLine("Frame 1");
             controller.Tick();
+            System.Console.WriteLine("TestInt = 1");
             testInt = 1;
+            System.Console.WriteLine("Destroy b2");
             b2.Destroy();
             System.Console.WriteLine("Frame 2");
             controller.Tick();

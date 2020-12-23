@@ -1,5 +1,5 @@
 ﻿using UnityEngine;
-using InvocationFlow;
+using TLM.InvocationFlow.Unity3D;
 
 public class ExampleScript : MonoBehaviour
 {
@@ -12,7 +12,7 @@ public class ExampleScript : MonoBehaviour
         this.InvokeWhen(() => print("hello"), () => transform.position.y > 1.0f);
 
         // Other Invokes exist as well
-        this.InvokeWhile(AboveMagicTreshold, () => print("We are above the treshold!"));
+        this.InvokeWhile(() => print("We are above the treshold!"), AboveMagicTreshold);
         this.TimeLerpValueThen(2f, 0f, 100f, (value) => print($"Loading {value}%"), () => print("Loading completed in 2 seconds!"));
         
         // If you need to do an invocation and the gameobject might be destroyed, it can be bound to a hidden Flow Gameobject.

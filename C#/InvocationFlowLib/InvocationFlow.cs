@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using InvocationHandle = System.Func<bool>;
 
-namespace InvocationFlow
+namespace TLM.InvocationFlow
 {
     /*
         To get the invocationFlow to work properly the function
@@ -18,7 +18,19 @@ namespace InvocationFlow
         // this delegate is mainly used for Unity3D logic where a behaviour can be destroyed and become invalid for usage.
         public static Func<TInvokeTarget, bool> IsValid = (t) => true;
         public static Func<TInvokeTarget, bool> IsEnabled = (t) => true;
+        // note : originally input deltaTime when iterating. Faster, but issues is that deltaTime might differ when -creating -the invocations and when executing them. Now fetches the current deltaTime when creating new flows, then use a cached deltaTime when iterating.
+        public static void LinkDeltaTimeProperties(System.Reflection.PropertyInfo deltaTimeProperty, System.Reflection.PropertyInfo unscaledDeltaTimeProperty)
+        {
+            var del = deltaTimeProperty.GetGetMethod().CreateDelegate(typeof(Func<float>));
+            _getDeltaTime = (Func<float>)del;
 
+            del = deltaTimeProperty.GetGetMethod().CreateDelegate(typeof(Func<float>));
+            _getUnscaledDeltaTime = (Func<float>)del;
+        }
+        private static Func<float> _getDeltaTime;
+        private static Func<float> _getUnscaledDeltaTime;
+        private static float _deltaTime;
+        private static float _unscaledDeltaTime;
 
         public static void InvokeWhen(TInvokeTarget target, Action func, Func<bool> condition)
         {
@@ -41,7 +53,22 @@ namespace InvocationFlow
                 AddToInvocationFlowDictionary(target, _invokeDelayedScaled(delayTime, func));
             else
                 AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(delayTime, func));
+        }
 
+        public static void InvokeDelayedFrames(TInvokeTarget target, int frames, Action func, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlowDictionary(target, _invokeDelayedScaled(frames, func));
+            else
+                AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(frames, func));
+        }
+
+        public static void InvokeDelayed(TInvokeTarget target, Action func, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlowDictionary(target, _invokeDelayedScaled(1, func));
+            else
+                AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(1, func));
         }
 
         public static void TimeLerpValue(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
@@ -113,7 +140,7 @@ namespace InvocationFlow
         }
         private static InvocationHandle _invokeDelayedUnscaled(float delayTime, Action func)
         {
-            float timeElapsed = -_unscaledDeltaTime;
+            float timeElapsed = -_getUnscaledDeltaTime();
             return () =>
             {
                 timeElapsed += _unscaledDeltaTime;
@@ -128,7 +155,7 @@ namespace InvocationFlow
 
         private static InvocationHandle _invokeDelayedScaled(float delayTime, Action func)
         {
-            float timeElapsed = -_deltaTime;
+            float timeElapsed = -_getDeltaTime();
             return () =>
             {
                 timeElapsed += _deltaTime;
@@ -140,9 +167,25 @@ namespace InvocationFlow
                 return true;
             };
         }
+
+        private static InvocationHandle _invokeDelayedScaled(int delayFrames, Action func)
+        {
+            float framesDelayed = -1;
+            return () =>
+            {
+                framesDelayed++;
+                if (framesDelayed < delayFrames)
+                {
+                    return false;
+                }
+                func();
+                return true;
+            };
+        }
+
         private static InvocationHandle _timeLerpValueUnscaled(float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null)
         {
-            float timeElapsed = -_unscaledDeltaTime;
+            float timeElapsed = -_getUnscaledDeltaTime();
             return () =>
             {
                 timeElapsed += _unscaledDeltaTime;
@@ -158,7 +201,7 @@ namespace InvocationFlow
         }
         private static InvocationHandle _timeLerpValueScaled(float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null)
         {
-            float timeElapsed = -_deltaTime;
+            float timeElapsed = -_getDeltaTime();
             return () =>
             {
                 timeElapsed += _deltaTime;
@@ -175,7 +218,7 @@ namespace InvocationFlow
 
         private static InvocationHandle _timeLerpValueUnscaled<T>(float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null)
         {
-            float timeElapsed = -_unscaledDeltaTime;
+            float timeElapsed = -_getUnscaledDeltaTime();
             return () =>
             {
                 timeElapsed += _unscaledDeltaTime;
@@ -191,8 +234,7 @@ namespace InvocationFlow
         }
         private static InvocationHandle _timeLerpValueScaled<T>(float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null)
         {
-            float timeElapsed = -_deltaTime;
-
+            float timeElapsed = -_getDeltaTime();
             return () =>
             {
                 timeElapsed += _deltaTime;
@@ -219,7 +261,7 @@ namespace InvocationFlow
                 bool complete = func(); // execute this frame in same "timespace" as invocationFlow "parent" that created this while iterating.
                 if (complete)
                     return;
-                
+
                 if (handlesAddedDuringIteration.ContainsKey(behaviour))
                 {
                     handlesAddedDuringIteration[behaviour].Add(func);
@@ -228,6 +270,7 @@ namespace InvocationFlow
                 {
                     handlesAddedDuringIteration.Add(behaviour, new List<InvocationHandle> { func });
                 }
+               
             }
             else if (invocationHandles.ContainsKey(behaviour))
             {
@@ -238,14 +281,15 @@ namespace InvocationFlow
                 invocationHandles.Add(behaviour, new List<InvocationHandle> { func });
             }
         }
+
         // it is assumed that deltaTimes are the same inbetween ticks, meaning timeElapsed must always start at 0.
-        private static float _deltaTime;
-        private static float _unscaledDeltaTime;
         private static bool iterating = false;
-        public static void IterateInvocationHandlers(float deltaTime, float unscaledDeltaTime)
+        public static void IterateInvocationHandlers()
         {
-            _deltaTime = deltaTime;
-            _unscaledDeltaTime = unscaledDeltaTime;
+            // cache deltaTime
+            _deltaTime = _getDeltaTime();
+            _unscaledDeltaTime = _getUnscaledDeltaTime();
+
             List<TInvokeTarget> keysToRemove = new List<TInvokeTarget>();
 
             iterating = true;
@@ -279,7 +323,7 @@ namespace InvocationFlow
                 invocationHandles.Remove(keyToRemove);
             }
 
-            if (handlesAddedDuringIteration.Count != 0)
+            if(handlesAddedDuringIteration.Count != 0)
             {
                 foreach (var keyValuePair in handlesAddedDuringIteration)
                 {

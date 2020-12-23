@@ -1,4 +1,4 @@
-﻿namespace TLM.OpenSource.InvocationFlow.Example
+﻿namespace TLM.InvocationFlow.Example
 {
     public class Behaviour : BehaviourBase
     {
