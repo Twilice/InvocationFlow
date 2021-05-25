@@ -1,6 +1,19 @@
-﻿using System;
+﻿// todo ::
+/* 
+    reduce garbage created upon start even more - performance per tick is very nice now, much faster than normal Unity update.
+
+ideas:
+    - create pooling of the "InvokeWhenFlows" to reuse and save more garbage?
+    we don't want to sacrifice to much performance to get close to 0 garbage
+
+    - try IEnumerator, is it stackallocating?
+
+    - try seperate lists for each flow, but instead using structs
+
+    - mix pools with struct and have a pool limit with array of structs, if you go over the pool then it uses an extra list? (e.g. static size object pool)
+*/
+using System;
 using System.Collections.Generic;
-using InvocationHandle = System.Func<bool>;
 
 namespace TLM.InvocationFlow
 {
@@ -18,7 +31,8 @@ namespace TLM.InvocationFlow
         // this delegate is mainly used for Unity3D logic where a behaviour can be destroyed and become invalid for usage.
         public static Func<TInvokeTarget, bool> IsValid = (t) => true;
         public static Func<TInvokeTarget, bool> IsEnabled = (t) => true;
-        // note : originally input deltaTime when iterating. Faster, but issues is that deltaTime might differ when -creating -the invocations and when executing them. Now fetches the current deltaTime when creating new flows, then use a cached deltaTime when iterating.
+        public static TInvokeTarget _specialTargetIgnoreValidation = null;
+        // note : originally input deltaTime when iterating. Faster, but issues arose because deltaTime might differ when -creating -the invocations and when executing them. Now fetches the current deltaTime when creating new flows, then use a cached deltaTime when iterating.
         public static void LinkDeltaTimeProperties(System.Reflection.PropertyInfo deltaTimeProperty, System.Reflection.PropertyInfo unscaledDeltaTimeProperty)
         {
             var del = deltaTimeProperty.GetGetMethod().CreateDelegate(typeof(Func<float>));
@@ -32,131 +46,76 @@ namespace TLM.InvocationFlow
         private static float _deltaTime;
         private static float _unscaledDeltaTime;
 
-        public static void InvokeWhen(TInvokeTarget target, Action func, Func<bool> condition)
+
+        // ***** Invoke Flows *****
+
+        private abstract class InvokeFlow
         {
-            AddToInvocationFlowDictionary(target, _invokeWhen(func, condition));
+            public TInvokeTarget target;
+            public abstract bool StepInvoke();
+            public InvokeFlow(TInvokeTarget target)
+            {
+                this.target = target;
+            }
         }
 
-        public static void InvokeWhile(TInvokeTarget target, Action func, Func<bool> condition)
-        {
-            AddToInvocationFlowDictionary(target, _invokeWhile(func, condition));
-        }
 
-        public static void InvokeWhileThen(TInvokeTarget target, Action func, Func<bool> condition, Action onComplete)
+        private class InvokeWhenFlow : InvokeFlow
         {
-            AddToInvocationFlowDictionary(target, _invokeWhileThen(func, condition, onComplete));
-        }
+            public Func<bool> condition;
+            public Action func;
+            public InvokeWhenFlow(TInvokeTarget target, Action func, Func<bool> condition) : base(target)
+            {
+                this.func = func;
+                this.condition = condition;
+            }
 
-        public static void InvokeDelayed(TInvokeTarget target, float delayTime, Action func, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _invokeDelayedScaled(delayTime, func));
-            else
-                AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(delayTime, func));
-        }
-
-        public static void InvokeDelayedFrames(TInvokeTarget target, int frames, Action func, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _invokeDelayedScaled(frames, func));
-            else
-                AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(frames, func));
-        }
-
-        public static void InvokeDelayed(TInvokeTarget target, Action func, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _invokeDelayedScaled(1, func));
-            else
-                AddToInvocationFlowDictionary(target, _invokeDelayedUnscaled(1, func));
-        }
-
-        public static void TimeLerpValue(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, func));
-            else
-                AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, func));
-        }
-        public static void TimeLerpValue<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, lerpFunction, func));
-            else
-                AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, lerpFunction, func));
-        }
-        public static void TimeLerpValueThen(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, func, onComplete));
-            else
-                AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, func, onComplete));
-        }
-        public static void TimeLerpValueThen<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete, bool scaledTime = true)
-        {
-            if (scaledTime)
-                AddToInvocationFlowDictionary(target, _timeLerpValueScaled(lerpTime, startVal, endVal, lerpFunction, func, onComplete));
-            else
-                AddToInvocationFlowDictionary(target, _timeLerpValueUnscaled(lerpTime, startVal, endVal, lerpFunction, func, onComplete));
-        }
-
-        // ***** invokes "implementation" *****
-
-        private static InvocationHandle _invokeWhen(Action func, Func<bool> condition)
-        {
-            return () =>
+            public override bool StepInvoke()
             {
                 if (condition() == false)
                     return false;
                 func();
                 return true;
-            };
+            }
         }
 
-        private static InvocationHandle _invokeWhile(Action func, Func<bool> condition)
+        private class InvokeWhileFlow : InvokeFlow
         {
-            return () =>
+            public Func<bool> condition;
+            public Action func;
+            public Action onComplete;
+            public InvokeWhileFlow(TInvokeTarget target, Action func, Func<bool> condition, Action onComplete = null) : base(target)
+            {
+                this.func = func;
+                this.condition = condition;
+                this.onComplete = onComplete;
+            }
+
+            public override bool StepInvoke()
             {
                 if (condition() == true)
                 {
                     func();
                     return false;
                 }
+                onComplete?.Invoke();
                 return true;
-            };
-        }
-        private static InvocationHandle _invokeWhileThen(Action func, Func<bool> condition, Action onComplete)
-        {
-            return () =>
-            {
-                if (condition() == true)
-                {
-                    func();
-                    return false;
-                }
-                onComplete();
-                return true;
-            };
-        }
-        private static InvocationHandle _invokeDelayedUnscaled(float delayTime, Action func)
-        {
-            float timeElapsed = -_getUnscaledDeltaTime();
-            return () =>
-            {
-                timeElapsed += _unscaledDeltaTime;
-                if (timeElapsed < delayTime)
-                {
-                    return false;
-                }
-                func();
-                return true;
-            };
+            }
         }
 
-        private static InvocationHandle _invokeDelayedScaled(float delayTime, Action func)
+        private class InvokeDelayedFlow : InvokeFlow
         {
-            float timeElapsed = -_getDeltaTime();
-            return () =>
+            private float delayTime;
+            private float timeElapsed;
+            public Action func;
+            public InvokeDelayedFlow(TInvokeTarget target, float delayTime, Action func) : base(target)
+            {
+                timeElapsed = -_getDeltaTime();
+                this.func = func;
+                this.delayTime = delayTime;
+            }
+
+            public override bool StepInvoke()
             {
                 timeElapsed += _deltaTime;
                 if (timeElapsed < delayTime)
@@ -165,28 +124,116 @@ namespace TLM.InvocationFlow
                 }
                 func();
                 return true;
-            };
+            }
         }
 
-        private static InvocationHandle _invokeDelayedScaled(int delayFrames, Action func)
+        private class InvokeDelayedUnscaledFlow : InvokeFlow
         {
-            float framesDelayed = -1;
-            return () =>
+            private float delayTime;
+            private float timeElapsed;
+            public Action func;
+            public InvokeDelayedUnscaledFlow(TInvokeTarget target, float delayTime, Action func) : base(target)
             {
-                framesDelayed++;
-                if (framesDelayed < delayFrames)
+                timeElapsed = -_getUnscaledDeltaTime();
+                this.func = func;
+                this.delayTime = delayTime;
+            }
+
+            public override bool StepInvoke()
+            {
+                timeElapsed += _unscaledDeltaTime;
+                if (timeElapsed < delayTime)
                 {
                     return false;
                 }
                 func();
                 return true;
-            };
+            }
+        }
+        private class InvokeDelayedFramesFlow : InvokeFlow
+        {
+            private float delayFrames;
+            private float framesElapsed;
+            public Action func;
+            public InvokeDelayedFramesFlow(TInvokeTarget target, int delayFrames, Action func) : base(target)
+            {
+                framesElapsed = -1;
+                this.func = func;
+                this.delayFrames = delayFrames;
+            }
+
+            public override bool StepInvoke()
+            {
+                framesElapsed++;
+                if (framesElapsed < delayFrames)
+                {
+                    return false;
+                }
+                func();
+                return true;
+            }
         }
 
-        private static InvocationHandle _timeLerpValueUnscaled(float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null)
+        private static float Lerp(float x, float y, float samplePoint)
         {
-            float timeElapsed = -_getUnscaledDeltaTime();
-            return () =>
+#if HIGH_PRECISION_LERP
+            return (1 - samplePoint) * x + samplePoint * y; // in case you have floating point errors with y-x
+#else
+            return x + samplePoint * (y - x);
+#endif
+        }
+
+        private class TimeLerpValueFlow : InvokeFlow
+        {
+            private float timeElapsed;
+            public float lerpTime;
+            public float startVal;
+            public float endVal;
+            public Action<float> func;
+            public Action onComplete;
+            public TimeLerpValueFlow(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null) : base(target)
+            {
+                this.timeElapsed = -_getDeltaTime();
+                this.lerpTime = lerpTime;
+                this.startVal = startVal;
+                this.endVal = endVal;
+                this.func = func;
+                this.onComplete = onComplete;
+            }
+
+            public override bool StepInvoke()
+            {
+                timeElapsed += _deltaTime;
+                if (timeElapsed < lerpTime)
+                {
+                    func(Lerp(startVal, endVal, timeElapsed / lerpTime));
+                    return false;
+                }
+                func(endVal);
+                onComplete?.Invoke();
+                return true;
+            }
+        }
+
+        private class TimeLerpValueUnscaledFlow : InvokeFlow
+        {
+            private float timeElapsed;
+            public float lerpTime;
+            public float startVal;
+            public float endVal;
+            public Action<float> func;
+            public Action onComplete;
+            public TimeLerpValueUnscaledFlow(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null) : base(target)
+            {
+                this.timeElapsed = -_getUnscaledDeltaTime();
+                this.lerpTime = lerpTime;
+                this.startVal = startVal;
+                this.endVal = endVal;
+                this.func = func;
+                this.onComplete = onComplete;
+            }
+
+            public override bool StepInvoke()
             {
                 timeElapsed += _unscaledDeltaTime;
                 if (timeElapsed < lerpTime)
@@ -197,29 +244,64 @@ namespace TLM.InvocationFlow
                 func(endVal);
                 onComplete?.Invoke();
                 return true;
-            };
+            }
         }
-        private static InvocationHandle _timeLerpValueScaled(float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete = null)
+
+        private class TimeLerpValueFlow<T> : InvokeFlow
         {
-            float timeElapsed = -_getDeltaTime();
-            return () =>
+            private float timeElapsed;
+            public float lerpTime;
+            public T startVal;
+            public T endVal;
+            public Action<T> func;
+            public Action onComplete;
+            Func<T, T, float, T> lerpFunction;
+            public TimeLerpValueFlow(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null) : base(target)
+            {
+                this.timeElapsed = -_getDeltaTime();
+                this.lerpTime = lerpTime;
+                this.startVal = startVal;
+                this.endVal = endVal;
+                this.func = func;
+                this.onComplete = onComplete;
+                this.lerpFunction = lerpFunction;
+            }
+
+            public override bool StepInvoke()
             {
                 timeElapsed += _deltaTime;
                 if (timeElapsed < lerpTime)
                 {
-                    func(Lerp(startVal, endVal, timeElapsed / lerpTime));
+                    func(lerpFunction(startVal, endVal, timeElapsed / lerpTime));
                     return false;
                 }
                 func(endVal);
                 onComplete?.Invoke();
                 return true;
-            };
+            }
         }
 
-        private static InvocationHandle _timeLerpValueUnscaled<T>(float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null)
+        private class TimeLerpValueUnscaledFlow<T> : InvokeFlow
         {
-            float timeElapsed = -_getUnscaledDeltaTime();
-            return () =>
+            private float timeElapsed;
+            public float lerpTime;
+            public T startVal;
+            public T endVal;
+            public Action<T> func;
+            public Action onComplete;
+            Func<T, T, float, T> lerpFunction;
+            public TimeLerpValueUnscaledFlow(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null) : base(target)
+            {
+                this.timeElapsed = -_getUnscaledDeltaTime();
+                this.lerpTime = lerpTime;
+                this.startVal = startVal;
+                this.endVal = endVal;
+                this.func = func;
+                this.onComplete = onComplete;
+                this.lerpFunction = lerpFunction;
+            }
+
+            public override bool StepInvoke()
             {
                 timeElapsed += _unscaledDeltaTime;
                 if (timeElapsed < lerpTime)
@@ -230,56 +312,81 @@ namespace TLM.InvocationFlow
                 func(endVal);
                 onComplete?.Invoke();
                 return true;
-            };
+            }
         }
-        private static InvocationHandle _timeLerpValueScaled<T>(float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete = null)
+
+        public static void InvokeWhen(TInvokeTarget target, Action func, Func<bool> condition)
         {
-            float timeElapsed = -_getDeltaTime();
-            return () =>
-            {
-                timeElapsed += _deltaTime;
-                if (timeElapsed < lerpTime)
-                {
-                    func(lerpFunction(startVal, endVal, timeElapsed / lerpTime));
-                    return false;
-                }
-                func(endVal);
-                onComplete?.Invoke();
-                return true;
-            };
+            AddToInvocationFlows(new InvokeWhenFlow(target, func, condition));
         }
+
+        public static void InvokeWhile(TInvokeTarget target, Action func, Func<bool> condition)
+        {
+            AddToInvocationFlows(new InvokeWhileFlow(target, func, condition));
+        }
+
+        public static void InvokeWhileThen(TInvokeTarget target, Action func, Func<bool> condition, Action onComplete)
+        {
+            AddToInvocationFlows(new InvokeWhileFlow(target, func, condition, onComplete));
+        }
+
+        public static void InvokeDelayed(TInvokeTarget target, float delayTime, Action func, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlows(new InvokeDelayedFlow(target, delayTime, func));
+            else
+                AddToInvocationFlows(new InvokeDelayedUnscaledFlow(target, delayTime, func));
+        }
+
+        public static void InvokeDelayedFrames(TInvokeTarget target, int delayFrames, Action func)
+        {
+            AddToInvocationFlows(new InvokeDelayedFramesFlow(target, delayFrames, func));
+        }
+
+
+        public static void TimeLerpValue(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlows(new TimeLerpValueFlow(target, lerpTime, startVal, endVal, func));
+            else
+                AddToInvocationFlows(new TimeLerpValueUnscaledFlow(target, lerpTime, startVal, endVal, func));
+        }
+        public static void TimeLerpValue<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlows(new TimeLerpValueFlow<T>(target, lerpTime, startVal, endVal, lerpFunction, func));
+            else
+                AddToInvocationFlows(new TimeLerpValueUnscaledFlow<T>(target, lerpTime, startVal, endVal, lerpFunction, func));
+        }
+        public static void TimeLerpValueThen(TInvokeTarget target, float lerpTime, float startVal, float endVal, Action<float> func, Action onComplete, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlows(new TimeLerpValueFlow(target, lerpTime, startVal, endVal, func, onComplete));
+            else
+                AddToInvocationFlows(new TimeLerpValueUnscaledFlow(target, lerpTime, startVal, endVal, func, onComplete));
+        }
+        public static void TimeLerpValueThen<T>(TInvokeTarget target, float lerpTime, T startVal, T endVal, Func<T, T, float, T> lerpFunction, Action<T> func, Action onComplete, bool scaledTime = true)
+        {
+            if (scaledTime)
+                AddToInvocationFlows(new TimeLerpValueFlow<T>(target, lerpTime, startVal, endVal, lerpFunction, func, onComplete));
+            else
+                AddToInvocationFlows(new TimeLerpValueUnscaledFlow<T>(target, lerpTime, startVal, endVal, lerpFunction, func, onComplete));
+        }
+
 
         // ***** base functions ******
 
-        private static Dictionary<TInvokeTarget, List<InvocationHandle>> invocationHandles = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
+        private static List<InvokeFlow> invokeFlows = new List<InvokeFlow>();
 
-        private static Dictionary<TInvokeTarget, List<InvocationHandle>> handlesAddedDuringIteration = new Dictionary<TInvokeTarget, List<InvocationHandle>>();
-        private static void AddToInvocationFlowDictionary(TInvokeTarget behaviour, InvocationHandle func)
+        private static void AddToInvocationFlows(InvokeFlow flow)
         {
             if (iterating)
             {
-                bool complete = func(); // execute this frame in same "timespace" as invocationFlow "parent" that created this while iterating.
+                bool complete = flow.StepInvoke(); // execute this frame in same frame as invocationFlow "parent" that created this while iterating.
                 if (complete)
                     return;
-
-                if (handlesAddedDuringIteration.ContainsKey(behaviour))
-                {
-                    handlesAddedDuringIteration[behaviour].Add(func);
-                }
-                else
-                {
-                    handlesAddedDuringIteration.Add(behaviour, new List<InvocationHandle> { func });
-                }
-               
             }
-            else if (invocationHandles.ContainsKey(behaviour))
-            {
-                invocationHandles[behaviour].Add(func);
-            }
-            else
-            {
-                invocationHandles.Add(behaviour, new List<InvocationHandle> { func });
-            }
+            invokeFlows.Add(flow);
         }
 
         // it is assumed that deltaTimes are the same inbetween ticks, meaning timeElapsed must always start at 0.
@@ -290,63 +397,32 @@ namespace TLM.InvocationFlow
             _deltaTime = _getDeltaTime();
             _unscaledDeltaTime = _getUnscaledDeltaTime();
 
-            List<TInvokeTarget> keysToRemove = new List<TInvokeTarget>();
 
             iterating = true;
-            var keysCache = invocationHandles.Keys;
-            foreach (var key in keysCache)
+            for (int i = invokeFlows.Count - 1; 0 <= i; i--)
             {
-                // if target is disposed of we don't do the invocation
-                if (IsValid(key) == false)
-                {
-                    keysToRemove.Add(key);
-                    continue;
-                }
-                // if target is paused, skip
-                if (IsEnabled(key) == false)
-                    continue;
-                var invocationFlowsCache = invocationHandles[key];
-                for (int i = invocationFlowsCache.Count - 1; 0 <= i; i--)
-                {
-                    if (invocationFlowsCache[i]() == true) // has InvocationFlow completed it's "flowchart"
-                    {
-                        invocationFlowsCache.RemoveAt(i);
-                    }
-                }
-                if (invocationFlowsCache.Count == 0)
-                {
-                    keysToRemove.Add(key);
-                }
-            }
-            foreach (var keyToRemove in keysToRemove)
-            {
-                invocationHandles.Remove(keyToRemove);
-            }
+                var invokeFlow = invokeFlows[i];
 
-            if(handlesAddedDuringIteration.Count != 0)
-            {
-                foreach (var keyValuePair in handlesAddedDuringIteration)
+                // special case when target is "global" we don't validate check - should fix to not have reference to Unity3D to keep library "generic"
+                if (ReferenceEquals(invokeFlow.target, _specialTargetIgnoreValidation) == false)
                 {
-                    if (invocationHandles.ContainsKey(keyValuePair.Key))
+                    //if target is disposed of we don't do the invocation
+                    if (IsValid(invokeFlows[i].target) == false)
                     {
-                        invocationHandles[keyValuePair.Key].AddRange(keyValuePair.Value);
+                        invokeFlows.RemoveAt(i);
+                        continue;
                     }
-                    else
-                    {
-                        invocationHandles.Add(keyValuePair.Key, keyValuePair.Value);
-                    }
+                    // if target is paused, skip
+                    if (IsEnabled(invokeFlows[i].target) == false)
+                        continue;
                 }
-                handlesAddedDuringIteration.Clear();
+
+                if (invokeFlows[i].StepInvoke() == true) // has InvocationFlow completed it's "flowchart"
+                {
+                    invokeFlows.RemoveAt(i);
+                }
             }
             iterating = false;
-        }
-        private static float Lerp(float x, float y, float samplePoint)
-        {
-#if HIGH_PRECISION_LERP
-            return (1 - samplePoint) * x + samplePoint * y; // in case you have floating point errors with y-x
-#else
-            return x + samplePoint * (y - x);
-#endif
         }
     }
 }

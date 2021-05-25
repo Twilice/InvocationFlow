@@ -1,6 +1,8 @@
 ﻿using System;
+
 using TLM.InvocationFlow;
 using TLM.InvocationFlow.Unity3D;
+
 using UnityEngine;
 
 namespace TLM.InvocationFlow.Unity3D
@@ -16,6 +18,7 @@ namespace TLM.InvocationFlow.Unity3D
                 if (ReferenceEquals(_staticController, null))
                 {
                     _staticController = InvocationFlowController.singleton.GetComponent<InvocationFlowController>();
+                    InvocationFlow<MonoBehaviour>._specialTargetIgnoreValidation = _staticController;
                 }
                 return _staticController;
             }
@@ -24,7 +27,7 @@ namespace TLM.InvocationFlow.Unity3D
         {
             InvocationFlowController.Initiate();
         }
-        
+
         public static void InvokeWhen(Action func, Func<bool> condition)
         {
             InvocationFlow<MonoBehaviour>.InvokeWhen(StaticController, func, condition);
@@ -44,15 +47,15 @@ namespace TLM.InvocationFlow.Unity3D
         {
             InvocationFlow<MonoBehaviour>.InvokeDelayed(StaticController, delayTime, func, scaledTime);
         }
-        public static void InvokeDelayedFrames(int delayFrames, Action func, bool scaledTime = true)
+        public static void InvokeDelayedFrames(int delayFrames, Action func)
         {
-            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(StaticController, delayFrames, func, scaledTime);
+            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(StaticController, delayFrames, func);
         }
 
         // delay 1 frame
-        public static void InvokeDelayed(Action func, bool scaledTime = true)
+        public static void InvokeNextFrame(Action func)
         {
-            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(StaticController, 1, func, scaledTime);
+            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(StaticController, 1, func);
         }
 
         public static void TimeLerpValue(float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
@@ -99,15 +102,15 @@ namespace TLM.InvocationFlow.Unity3D
             InvocationFlow<MonoBehaviour>.InvokeDelayed(script, delayTime, func, scaledTime);
         }
 
-        public static void InvokeDelayed(this MonoBehaviour script, int delayFrames, Action func, bool scaledTime = true)
+        public static void InvokeDelayed(this MonoBehaviour script, int delayFrames, Action func)
         {
-            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(script, delayFrames, func, scaledTime);
+            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(script, delayFrames, func);
         }
 
         // delay 1 frame
-        public static void InvokeDelayed(this MonoBehaviour script, Action func, bool scaledTime = true)
+        public static void InvokeNextFrame(this MonoBehaviour script, Action func)
         {
-            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(script, 1, func, scaledTime);
+            InvocationFlow<MonoBehaviour>.InvokeDelayedFrames(script, 1, func);
         }
 
         public static void TimeLerpValue(this MonoBehaviour script, float lerpTime, float startVal, float endVal, Action<float> func, bool scaledTime = true)
